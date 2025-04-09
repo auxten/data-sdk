@@ -53,9 +53,8 @@ print("\nResults as JSON:")
 print(sample.execute(output_format="JSON"))
 
 # # Define the LLM vendor for text-to-SQL
-# question = LLM(LLM.claude(token="xxx")).question_func(prompt="")
+# DataSource.question = LLM(LLM.claude(token="xxx")).question_func(prompt="")
 
-# # Add async support for better performance
 # # Non-blocking operations for heavy data processing
 # # - `question` could be used as text-to-sql short hand, cache=True will
 # # make sure the LLM generated SQL is determinstic unless question changed.
@@ -64,8 +63,8 @@ print(sample.execute(output_format="JSON"))
 #     sample.question("what's the top 10 mentioned words", cache=True).explain().execute()
 # )
 
-# # Rich output format options
-# # Multiple export formats for different downstream needs
+# Rich output format options
+# Multiple export formats for different downstream needs
 # result = analysis.to_dataframe()  # Return pandas DataFrame
 # result = analysis.to_dict()  # Return dictionary structure
 # result = analysis.to_chart("bar")  # Generate visualization directly in Notebook

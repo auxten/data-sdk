@@ -143,9 +143,35 @@ class QueryBuilder:
                         else field
                     )
                 fields.append(field)
+
+            # If we have joins, we need to include all fields from the joined table
+            if self.state.joins:
+                for join in self.state.joins:
+                    if join.alias:
+                        fields.append(f"{join.alias}.*")
+                    else:
+                        fields.append("*")
+
             select_fields = ", ".join(fields)
         else:
-            select_fields = "*"
+            # If no specific fields selected, select all fields from all tables
+            select_fields = []
+            # Add all fields from the main table
+            if self.state.table_alias:
+                select_fields.append(f"{self.state.table_alias}.*")
+            else:
+                select_fields.append("*")
+
+            # Add all fields from joined tables
+            if self.state.joins:
+                for join in self.state.joins:
+                    if join.alias:
+                        select_fields.append(f"{join.alias}.*")
+                    else:
+                        select_fields.append("*")
+
+            select_fields = ", ".join(select_fields)
+
         parts.append(f"SELECT {select_fields}")
 
         # Add FROM clause with table alias
