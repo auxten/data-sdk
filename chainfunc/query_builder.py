@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 import chdb
 from chdbpyreader.data_reader import DataReader
+from agent import Agent
 import re
 
 
@@ -21,22 +22,38 @@ class QueryState:
     limit_value: Optional[int] = None
     explain: bool = False
     table_alias: str = None
+    schema: Optional[Dict[str, str]] = None  # Store column name -> type mapping
 
 
 class QueryBuilder:
     def __init__(
         self,
-        table_func: str,
+        table_func: str = None,
         reader: Optional[DataReader] = None,
         alias: Optional[str] = None,
+        sql: Optional[str] = None,
     ):
-        self.state = QueryState(table=table_func)
-        self._sql = None
-        self._reader = reader
-        # Generate table alias if not provided
-        if not alias:
-            alias = self._generate_alias(table_func)
-        self.state.table_alias = alias
+        """Initialize QueryBuilder.
+
+        Args:
+            table_func: The table function string (e.g., "Python(reader)")
+            reader: Optional DataReader instance
+            alias: Optional table alias
+            sql: Optional existing SQL query string
+        """
+        if sql:
+            # If SQL is provided, use it directly
+            self._sql = sql
+            self.state = None
+        else:
+            # Otherwise initialize normally
+            self.state = QueryState(table=table_func)
+            self._sql = None
+            self._reader = reader
+            # Generate table alias if not provided
+            if not alias:
+                alias = self._generate_alias(table_func)
+            self.state.table_alias = alias
 
     def _generate_alias(self, table_func: str) -> str:
         """Generate table alias from table function"""
@@ -126,6 +143,10 @@ class QueryBuilder:
 
     def _build_sql(self) -> str:
         """Build the SQL query from the current state"""
+        # If we have existing SQL, return it directly
+        if self._sql:
+            return self._sql
+
         parts = []
 
         # Add EXPLAIN if requested
@@ -213,15 +234,20 @@ class QueryBuilder:
 
     def execute(self, output_format: str = "PrettyCompact") -> str:
         """Execute the query using chdb and return the results"""
-        sql = self._build_sql()
-        self._sql = sql
+        # If SQL was already built (e.g., from a question), use it directly
+        if self._sql:
+            sql = self._sql
+        else:
+            sql = self._build_sql()
+            self._sql = sql
 
         # If the query uses Python(reader) and we have a reader instance,
         # declare it globally for ClickHouse to use
-        if "Python(reader)" in sql and self._reader:
+        if "Python(reader)" in sql and hasattr(self, "_reader") and self._reader:
             global reader
             reader = self._reader
 
+        # print(sql)
         return chdb.query(sql, output_format)
 
     def explain(self) -> str:
@@ -232,3 +258,51 @@ class QueryBuilder:
     def __str__(self) -> str:
         """Return the current SQL query"""
         return self._build_sql()
+
+    def get_schema(self) -> Dict[str, Union[List[str], Dict[str, str]]]:
+        """Extract schema information from the query builder."""
+        schema = {}
+
+        # Get schema from the main table
+        if self.state.table_alias:
+            if self.state.schema:  # If we have column types
+                schema[self.state.table_alias] = self.state.schema
+            else:
+                schema[self.state.table_alias] = self.state.select_fields or ["*"]
+
+        # Get schema from joined tables
+        if self.state.joins:
+            for join in self.state.joins:
+                if join.alias:
+                    # For file sources, we can't know the exact columns
+                    # For API sources, we can get columns from DataReader
+                    if join.table_func.startswith("file("):
+                        schema[join.alias] = ["*"]  # All columns from file
+                    elif join.table_func.startswith("Python("):
+                        # Try to get columns from DataReader if available
+                        if hasattr(self, "_reader") and self._reader:
+                            schema[join.alias] = self._reader.get_schema() or ["*"]
+                        else:
+                            schema[join.alias] = ["*"]
+                    else:
+                        schema[join.alias] = ["*"]  # Default to all columns
+
+        return schema
+
+    def question(self, question: str) -> "QueryBuilder":
+        """Generate SQL from a natural language question using Agent."""
+        agent = Agent()
+        return agent.question_wrapper(self, question)
+
+    def table(self, name: str) -> "QueryBuilder":
+        """Create a QueryBuilder for the specified table"""
+        self._table_name = name
+        table_func = self._get_clickhouse_table_function()
+        builder = QueryBuilder(table_func, self._reader)
+
+        # Get schema information if available
+        if self._reader:
+            schema = self._reader.get_schema()
+            builder.state.schema = schema
+
+        return builder

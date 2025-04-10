@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, Callable
 from enum import Enum
 from dataclasses import dataclass
 from chainfunc.query_builder import QueryBuilder
@@ -98,3 +98,11 @@ class DataSource:
     def execute_raw_query(self, query: str) -> str:
         """Execute a raw SQL query"""
         return f"{query} FROM {self._get_clickhouse_table_function()}"
+
+    @staticmethod
+    def set_question_func(func: Callable) -> None:
+        """Set the question function for all QueryBuilder instances."""
+        QueryBuilder._question_func = func
+
+    # Alias for backward compatibility
+    question = set_question_func
