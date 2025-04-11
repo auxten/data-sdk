@@ -247,8 +247,101 @@ class QueryBuilder:
             global reader
             reader = self._reader
 
-        # print(sql)
-        return chdb.query(sql, output_format)
+        # Execute the query and get results
+        result = chdb.query(sql, output_format)
+        return result
+
+    def to_dataframe(self) -> "pandas.DataFrame":
+        """Convert query results to a pandas DataFrame"""
+        try:
+            import pandas as pd
+        except ImportError:
+            raise ImportError("pandas is required for to_dataframe() method")
+
+        # Execute query with JSON format for easier parsing
+        result = self.execute("JSON")
+
+        # Parse JSON result into DataFrame
+        import json
+
+        data = json.loads(str(result))
+
+        # Handle empty results
+        if not data or "data" not in data or not data["data"]:
+            return pd.DataFrame()
+
+        # Extract data and create DataFrame
+        df = pd.DataFrame(data["data"])
+
+        # Set column types based on meta information if available
+        if "meta" in data:
+            type_mapping = {
+                "Int8": "int8",
+                "Int16": "int16",
+                "Int32": "int32",
+                "Int64": "int64",
+                "UInt8": "uint8",
+                "UInt16": "uint16",
+                "UInt32": "uint32",
+                "UInt64": "uint64",
+                "Float32": "float32",
+                "Float64": "float64",
+                "String": "string",
+                "Date": "datetime64[ns]",
+                "DateTime": "datetime64[ns]",
+                "Boolean": "bool",
+            }
+
+            for col_meta in data["meta"]:
+                col_name = col_meta["name"]
+                col_type = col_meta["type"]
+                if col_type in type_mapping and col_name in df.columns:
+                    try:
+                        df[col_name] = df[col_name].astype(type_mapping[col_type])
+                    except (ValueError, TypeError):
+                        # If type conversion fails, keep original type
+                        pass
+
+        return df
+
+    def to_dict(self) -> Dict[str, List[Any]]:
+        """Convert query results to a dictionary of lists"""
+        # Execute query with JSON format for easier parsing
+        result = self.execute("JSON")
+
+        # Parse JSON result into dictionary
+        import json
+
+        data = json.loads(str(result))
+
+        # Handle empty results
+        if not data or "data" not in data or not data["data"]:
+            return {}
+
+        # Convert to dictionary of lists
+        result_dict = {}
+        for row in data["data"]:
+            for key, value in row.items():
+                if key not in result_dict:
+                    result_dict[key] = []
+                result_dict[key].append(value)
+
+        return result_dict
+
+    def plot(self, **kwargs) -> None:
+        """Generate a chart from query results using pandas plotting"""
+        df = self.to_dataframe()
+        if df.empty:
+            print("No data to plot")
+            return
+
+        # Call pandas plot function directly
+        df.plot(**kwargs)
+
+        # Show the plot
+        import matplotlib.pyplot as plt
+
+        plt.show()
 
     def explain(self) -> str:
         """Show the query execution plan"""
