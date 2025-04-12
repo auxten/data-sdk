@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 
 .env
+vector_search_db/
 
 # C extensions
 *.so
